@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Carte des sites d'embellissement</title>
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <style>
+        /* Fait en sorte que la carte prenne tout l'écran */
+        body { margin: 0; padding: 0; }
+        #map { height: 100vh; width: 100%; }
+        
+        /* Style pour l'aperçu photo dans le tooltip */
+        .leaflet-tooltip img {
+            max-width: 200px;
+            max-height: 200px;
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    
+    <div id="map"></div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <script>
+	console.log("TEST SCRIPT EXÉCUTÉ"); // <--- AJOUTEZ CETTE LIGNE
+
+        // --- À CONFIGURER ---
+        // Collez l'URL de votre application Web (obtenue après le déploiement) ici
+        const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwC5750QaqqSxHuJAp_fCxR3HvXWxd7Yw8JB1gOf-SuYcEn6cddg_uN7QDMizi-m_I55A/exec"; 
+        // --- FIN CONFIGURATION ---
+
+        // Initialise la carte (centrée sur Montréal)
+        const map = L.map('map').setView([45.5019, -73.5674], 13);
+
+        // Ajoute le fond de carte (OpenStreetMap)
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        }).addTo(map);
+
+        // Crée un calque pour les marqueurs
+        const markerLayer = L.layerGroup().addTo(map);
+
+        /*
+         * Définition des icônes
+         */
+        const Icone = L.Icon.extend({
+            options: {
+                shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+                iconSize: [25, 41],
+                iconAnchor: [12, 41],
+                popupAnchor: [1, -34],
+                shadowSize: [41, 41]
+            }
+        });
+
+        // Définissez vos icônes (vert, orange, bleu par défaut)
+        const iconJachere = new Icone({ iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png' });
+        const iconAmenagement = new Icone({ iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-orange.png' });
+        const iconChampFleuri = new Icone({ iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png' }); // Exemple pour "Champ fleuri"
+        const iconCarreGazon = new Icone({ iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-yellow.png' }); // Exemple pour "Carré de gazon"
+        const iconDefaut = new Icone({ iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png' });
+
+
+        /*
+         * Fonction pour choisir l'icône
+         */
+        function getIconByGenre(genre) {
+            // Assurez-vous que le texte correspond EXACTEMENT à ce qui se trouve dans votre Sheet
+            switch (genre) {
+                case "Jachère":
+                    return iconJachere;
+                case "Aménagement paysager":
+                    return iconAmenagement;
+                case "Champ fleuri":
+                    return iconChampFleuri;
+                case "Carré de gazon":
+                    return iconCarreGazon;
+                default:
+                    return iconDefaut; // Pour "Autre" ou les cas non définis
+            }
+        }
+
+// Fonction pour récupérer les données et mettre à jour la carte
+        async function updateMap() {
+            console.log("Chargement des points...");
+            try {
+                const response = await fetch(WEB_APP_URL);
+                if (!response.ok) {
+                    throw new Error(`Erreur réseau: ${response.statusText}`);
+                }
+                const points = await response.json();
+                
+                markerLayer.clearLayers();
+
+                points.forEach(point => {
+                    
+                    const markerIcon = getIconByGenre(point.genre);
+
+                    // --- AJOUT DU DÉCALAGE (JITTER) ---
+                    // On ajoute une micro-valeur aléatoire pour éviter la superposition parfaite
+                    // parseFloat s'assure que nous travaillons avec des nombres
+                    const lat = parseFloat(point.lat) + (Math.random() - 0.5) * 0.0001;
+                    const lon = parseFloat(point.lon) + (Math.random() - 0.5) * 0.0001;
+                    // --- FIN DE L'AJOUT ---
+
+                    // Crée le marqueur (en utilisant les nouvelles valeurs "lat" et "lon")
+                    const marker = L.marker([lat, lon], { icon: markerIcon });
+                    
+                    // 1. Lie le POPUP (pour le clic)
+                    const popupHtml = `<b>${point.genre}</b><br>${point.desc}`;
+                    marker.bindPopup(popupHtml);
+
+                    // 2. Lie le TOOLTIP (pour le survol)
+                    if (point.photoUrl) {
+                        const fileIDMatch = point.photoUrl.match(/[\w-]{25,}/);
+                        if (fileIDMatch && fileIDMatch[0]) {
+                            const fileID = fileIDMatch[0];
+                            const thumbnailUrl = `https://drive.google.com/thumbnail?id=${fileID}&sz=w200`;
+                            const tooltipHtml = `<img src="${thumbnailUrl}" width="200" alt="Aperçu du site">`;
+                            marker.bindTooltip(tooltipHtml, { sticky: true });
+                        }
+                    }
+                    
+                    // 3. Ajoute le marqueur à la carte
+                    marker.addTo(markerLayer);
+                });
+                
+                console.log(`Chargement terminé. ${points.length} points affichés.`);
+
+            } catch (error) {
+                console.error("Erreur lors de la récupération des points:", error);
+            }
+        }
+        /*
+         * Mise à jour unique au chargement de la page
+         */
+        updateMap();
+
+    </script>
+</body>
+</html>
